@@ -163,7 +163,13 @@ def _pil_crop_resize(img: Image.Image,
         box = (int(x1*w), int(y1*h), int(x2*w), int(y2*h))
         img = img.crop(box)
     if target_size:
-        img = img.resize(target_size, Image.LANCZOS)
+        tw, th = target_size
+        iw, ih = img.size
+        # Only downsample — never upsample. Upsampling with LANCZOS/bicubic
+        # degrades quality worse than letting ST scale in CSS.
+        # AI upscaling (Real-ESRGAN) planned for a future milestone.
+        if iw > tw and ih > th:
+            img = img.resize(target_size, Image.LANCZOS)
     return img
 
 
@@ -286,12 +292,23 @@ def auto_assign_from_folder(folder: Path) -> dict[str, Path]:
 
 class CropperDialog(ctk.CTkToplevel):
     """
-    Interactive crop tool. The image moves/zooms under a fixed crop box.
-    Drag to pan, scroll to zoom. Aspect ratio is locked.
+    Interactive crop tool. Fixed crop box, image pans/zooms freely beneath it.
+
+    Design constraints:
+    - No zoom floor tied to crop box coverage — user can zoom out to see the
+      full image regardless of its dimensions
+    - When image covers the crop box: normal crop (user selects a region)
+    - When image is smaller than crop box (zoomed out fully): entire image is
+      used as the crop; status line warns the user
+    - Clamp: when image >= box axis, crop box stays within image;
+             when image < box axis, image is centered within the box
+    - MIN_SCALE is a tiny practical floor just to keep the image visible
+
     result: NormalizedCrop (x1,y1,x2,y2 as 0-1 fractions) or None if cancelled.
     """
 
-    PAD           = 40          # pixels around crop box on canvas
+    PAD           = 40
+    MIN_SCALE     = 0.02        # practical floor — keeps image from vanishing
     OVERLAY_COLOR = "#000000"
     STIPPLE       = "gray50"
     BORDER_COLOR  = "#ffffff"
@@ -305,7 +322,6 @@ class CropperDialog(ctk.CTkToplevel):
         self.resizable(False, False)
         self.result: NormalizedCrop | None = None
 
-        # Load image; downsample for display only (preserve orig size for coords)
         orig = Image.open(image_path).convert("RGBA")
         self._orig_size = orig.size
         MAX_DIM = 1200
@@ -315,7 +331,7 @@ class CropperDialog(ctk.CTkToplevel):
         self._disp_img  = disp
         self._disp_size = disp.size
 
-        # Crop box: ~400px on the longer side
+        # Crop box: ~400px on the longer side, ratio-locked
         if rw >= rh:
             bw, bh = 400, max(1, int(400 * rh / rw))
         else:
@@ -326,26 +342,34 @@ class CropperDialog(ctk.CTkToplevel):
         canvas_w = bw + 2 * self.PAD
         canvas_h = bh + 2 * self.PAD
 
-        # Initial zoom: cover the crop box
+        # Start zoomed out: fit the entire image in the canvas so user
+        # can see all pixels before choosing a crop region.
         dw, dh = self._disp_size
-        self._scale    = max(bw / dw, bh / dh)
-        self._offset_x = self.BOX_X + (bw - dw * self._scale) / 2
-        self._offset_y = self.BOX_Y + (bh - dh * self._scale) / 2
+        self._scale    = min((canvas_w - 4) / dw, (canvas_h - 4) / dh)
+        sw, sh         = dw * self._scale, dh * self._scale
+        self._offset_x = (canvas_w - sw) / 2
+        self._offset_y = (canvas_h - sh) / 2
 
-        self._drag_start   = None
-        self._tk_img       = None
-        self._img_item     = None
-        self._overlay_ids  = []
-        self._border_id    = None
+        self._drag_start  = None
+        self._tk_img      = None
+        self._img_item    = None
+        self._overlay_ids = []
+        self._border_id   = None
+        self._status_var  = tk.StringVar(value="")
 
         self._build(canvas_w, canvas_h)
         self._render()
 
-    def _build(self, cw: int, ch: int):
-        self.geometry(f"{cw + 2}x{ch + 80}")
+    # ── build ─────────────────────────────────────────────────────────────
 
-        ctk.CTkLabel(self, text="Drag to pan  ·  Scroll to zoom",
-                     font=ctk.CTkFont(size=11), text_color="#888899").pack(pady=(8, 2))
+    def _build(self, cw: int, ch: int):
+        self.geometry(f"{cw + 2}x{ch + 100}")
+
+        ctk.CTkLabel(self, text="Scroll to zoom  ·  Drag to pan",
+                     font=ctk.CTkFont(size=11), text_color="#888899").pack(pady=(8, 0))
+        ctk.CTkLabel(self, textvariable=self._status_var,
+                     font=ctk.CTkFont(size=10),
+                     text_color="#ffaa44").pack(pady=(0, 2))
 
         self._canvas = tk.Canvas(self, width=cw, height=ch,
                                   bg="#111118", highlightthickness=0,
@@ -366,26 +390,46 @@ class CropperDialog(ctk.CTkToplevel):
         self._canvas.bind("<ButtonRelease-1>", lambda _: setattr(self, "_drag_start", None))
         self._canvas.bind("<MouseWheel>",       self._on_wheel)
 
-    # ── rendering ─────────────────────────────────────────────────────────
+    # ── helpers ───────────────────────────────────────────────────────────
 
-    def _min_scale(self) -> float:
-        dw, dh = self._disp_size
-        return max(self.BOX_W / dw, self.BOX_H / dh)
-
-    def _clamp(self):
+    def _covers_box(self) -> bool:
+        """True when the image fully covers the crop box at current transform."""
         dw, dh = self._disp_size
         sw, sh = dw * self._scale, dh * self._scale
-        self._offset_x = min(self._offset_x, float(self.BOX_X))
-        self._offset_x = max(self._offset_x, float(self.BOX_X + self.BOX_W - sw))
-        self._offset_y = min(self._offset_y, float(self.BOX_Y))
-        self._offset_y = max(self._offset_y, float(self.BOX_Y + self.BOX_H - sh))
+        return (self._offset_x <= self.BOX_X and
+                self._offset_x + sw >= self.BOX_X + self.BOX_W and
+                self._offset_y <= self.BOX_Y and
+                self._offset_y + sh >= self.BOX_Y + self.BOX_H)
+
+    def _clamp(self):
+        """
+        Per-axis constraint:
+        - If image >= box axis: keep crop box within image (can't pan out)
+        - If image <  box axis: center image within the box (can't pan at all)
+        """
+        dw, dh = self._disp_size
+        sw, sh = dw * self._scale, dh * self._scale
+        bx, by, bw, bh = self.BOX_X, self.BOX_Y, self.BOX_W, self.BOX_H
+
+        if sw >= bw:
+            self._offset_x = min(float(bx), self._offset_x)
+            self._offset_x = max(float(bx + bw - sw), self._offset_x)
+        else:
+            self._offset_x = bx + (bw - sw) / 2
+
+        if sh >= bh:
+            self._offset_y = min(float(by), self._offset_y)
+            self._offset_y = max(float(by + bh - sh), self._offset_y)
+        else:
+            self._offset_y = by + (bh - sh) / 2
+
+    # ── rendering ─────────────────────────────────────────────────────────
 
     def _render(self):
         dw, dh = self._disp_size
         nw, nh = max(1, int(dw * self._scale)), max(1, int(dh * self._scale))
         scaled = self._disp_img.resize((nw, nh), Image.LANCZOS)
         self._tk_img = ImageTk.PhotoImage(scaled)
-
         ox, oy = int(self._offset_x), int(self._offset_y)
         if self._img_item is None:
             self._img_item = self._canvas.create_image(ox, oy, anchor="nw",
@@ -394,6 +438,11 @@ class CropperDialog(ctk.CTkToplevel):
             self._canvas.itemconfig(self._img_item, image=self._tk_img)
             self._canvas.coords(self._img_item, ox, oy)
         self._draw_overlay()
+        # Status line
+        if self._covers_box():
+            self._status_var.set("")
+        else:
+            self._status_var.set("⚠  Zoomed out — entire image will be used as crop")
 
     def _draw_overlay(self):
         for i in self._overlay_ids:
@@ -407,31 +456,26 @@ class CropperDialog(ctk.CTkToplevel):
         bx, by, bw, bh = self.BOX_X, self.BOX_Y, self.BOX_W, self.BOX_H
 
         for x1, y1, x2, y2 in [
-            (0,       0,      cw,      by     ),   # top
-            (0,       by+bh,  cw,      ch     ),   # bottom
-            (0,       by,     bx,      by+bh  ),   # left
-            (bx+bw,   by,     cw,      by+bh  ),   # right
+            (0,      0,      cw,      by    ),
+            (0,      by+bh,  cw,      ch    ),
+            (0,      by,     bx,      by+bh ),
+            (bx+bw,  by,     cw,      by+bh ),
         ]:
             if x2 > x1 and y2 > y1:
                 self._overlay_ids.append(self._canvas.create_rectangle(
                     x1, y1, x2, y2,
                     fill=self.OVERLAY_COLOR, stipple=self.STIPPLE, outline=""))
 
-        # Crop box border
         self._border_id = self._canvas.create_rectangle(
-            bx, by, bx+bw, by+bh,
-            outline=self.BORDER_COLOR, width=2, fill="")
+            bx, by, bx+bw, by+bh, outline=self.BORDER_COLOR, width=2, fill="")
 
-        # Rule-of-thirds guides
         for i in (1, 2):
             x = bx + bw * i // 3
             y = by + bh * i // 3
             self._overlay_ids.append(self._canvas.create_line(
-                x, by, x, by+bh,
-                fill=self.GUIDE_COLOR, stipple=self.STIPPLE))
+                x, by, x, by+bh, fill=self.GUIDE_COLOR, stipple=self.STIPPLE))
             self._overlay_ids.append(self._canvas.create_line(
-                bx, y, bx+bw, y,
-                fill=self.GUIDE_COLOR, stipple=self.STIPPLE))
+                bx, y, bx+bw, y, fill=self.GUIDE_COLOR, stipple=self.STIPPLE))
 
     # ── interaction ───────────────────────────────────────────────────────
 
@@ -447,10 +491,14 @@ class CropperDialog(ctk.CTkToplevel):
         self._clamp()
         self._canvas.coords(self._img_item, int(self._offset_x), int(self._offset_y))
         self._draw_overlay()
+        if self._covers_box():
+            self._status_var.set("")
+        else:
+            self._status_var.set("⚠  Zoomed out — entire image will be used as crop")
 
     def _on_wheel(self, event):
         factor    = 1.12 if event.delta > 0 else 1 / 1.12
-        new_scale = max(self._min_scale(), self._scale * factor)
+        new_scale = max(self.MIN_SCALE, self._scale * factor)
         mx, my    = event.x, event.y
         self._offset_x = mx - (mx - self._offset_x) * (new_scale / self._scale)
         self._offset_y = my - (my - self._offset_y) * (new_scale / self._scale)
@@ -462,12 +510,17 @@ class CropperDialog(ctk.CTkToplevel):
 
     def _confirm(self):
         dw, dh = self._disp_size
-        # Crop box in display-pixel space
+
+        if not self._covers_box():
+            # Entire image fits within the crop box — use the full image
+            self.result = (0.0, 0.0, 1.0, 1.0)
+            self.destroy()
+            return
+
         cx = (self.BOX_X - self._offset_x) / self._scale
         cy = (self.BOX_Y - self._offset_y) / self._scale
         cw = self.BOX_W / self._scale
         ch = self.BOX_H / self._scale
-        # Normalize to 0-1 (relative to display image, same ratio as original)
         x1 = max(0.0, min(1.0, cx / dw))
         y1 = max(0.0, min(1.0, cy / dh))
         x2 = max(0.0, min(1.0, (cx + cw) / dw))
