@@ -92,9 +92,29 @@ def _parse_png_chunks(raw: bytes) -> list[tuple[bytes, bytes]]:
 
 
 def read_png_card(path: Path) -> dict:
-    """Extract V2/V3 character card JSON from PNG tEXt chunks."""
-    img = Image.open(path)
-    raw = img.info.get("ccv3") or img.info.get("chara")
+    """Extract V2/V3 character card JSON from PNG tEXt chunks.
+
+    Parses raw PNG bytes directly instead of relying on Pillow's img.info,
+    which doesn't reliably expose tEXt chunks from all PNG encoders.
+    Checks ccv3 first (V3), falls back to chara (V2).
+    """
+    raw_bytes = path.read_bytes()
+    if not raw_bytes.startswith(b"\x89PNG"):
+        raise ValueError("File is not a valid PNG.")
+
+    chunks = _parse_png_chunks(raw_bytes)
+    found: dict[str, str] = {}
+    for ctype, cdata in chunks:
+        if ctype == b"tEXt":
+            try:
+                keyword, _, text = cdata.partition(b"\x00")
+                kw = keyword.decode("latin-1").lower()
+                if kw in ("chara", "ccv3"):
+                    found[kw] = text.decode("latin-1")
+            except Exception:
+                continue
+
+    raw = found.get("ccv3") or found.get("chara")
     if not raw:
         raise ValueError("No character card metadata found in this PNG.")
     return json.loads(base64.b64decode(raw).decode("utf-8"))
@@ -805,10 +825,14 @@ class CharXStudio(ctk.CTk):
             self._update_avatar_preview(self._avatar_path)
 
     def _update_avatar_preview(self, path: Path):
+        """Display avatar preserving aspect ratio, fitted within 128×192 (portrait-friendly)."""
         try:
-            img = Image.open(path).convert("RGBA").resize((128, 128), Image.LANCZOS)
-            self._avatar_photo = ctk.CTkImage(light_image=img, dark_image=img, size=(128, 128))
-            self._avatar_label.configure(image=self._avatar_photo, text="")
+            img = Image.open(path).convert("RGBA")
+            max_w, max_h = 128, 192
+            img.thumbnail((max_w, max_h), Image.LANCZOS)
+            w, h = img.size
+            self._avatar_photo = ctk.CTkImage(light_image=img, dark_image=img, size=(w, h))
+            self._avatar_label.configure(image=self._avatar_photo, text="", width=w, height=h)
         except Exception:
             pass
 
