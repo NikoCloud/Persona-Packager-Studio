@@ -689,6 +689,8 @@ class PersonaPackagerStudio(ctk.CTk):
 
         self._build_ui()
         self._refresh_sidebar()
+        self.bind("<Configure>", self._on_window_resize)
+        self._last_win_h = 0
 
     # ── UI ────────────────────────────────────────────────────────────────────
 
@@ -765,8 +767,14 @@ class PersonaPackagerStudio(ctk.CTk):
             self._resize_sidebar()
 
     def _avatar_preview_w(self) -> int:
-        """Avatar preview pixel width derived from current sidebar width."""
-        return max(80, self._sidebar_w - 40)
+        """Avatar preview pixel width, capped so the avatar never eats the bottom buttons."""
+        w = max(80, self._sidebar_w - 40)
+        # Reserve ~220px for browse button + name + tokens + New/Import buttons + padding
+        win_h = self.winfo_height() or 720
+        max_h = max(80, win_h - 220)
+        # If uncapped width would produce a taller avatar than fits, shrink width to match
+        max_w_from_h = int(max_h * 2 / 3)
+        return min(w, max_w_from_h)
 
     def _resize_sidebar(self):
         self._sidebar.configure(width=self._sidebar_w)
@@ -775,6 +783,14 @@ class PersonaPackagerStudio(ctk.CTk):
         ah = int(aw * 3 / 2)
         self._avatar_label.configure(width=aw, height=ah)
         self._update_avatar_preview()
+
+    def _on_window_resize(self, event):
+        # Only react to the top-level window changing height, not every child widget
+        if event.widget is not self:
+            return
+        if event.height != self._last_win_h:
+            self._last_win_h = event.height
+            self._resize_sidebar()
 
     def _build_main(self):
         main = ctk.CTkFrame(self, fg_color="transparent")
