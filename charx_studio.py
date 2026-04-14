@@ -10,6 +10,7 @@ import difflib
 import io
 import json
 import struct
+import sys
 import zipfile
 import zlib
 from pathlib import Path
@@ -22,7 +23,14 @@ from PIL import Image, ImageTk
 # ── Constants ────────────────────────────────────────────────────────────────
 
 APP_TITLE   = "Persona Packager Studio"
-LOGO_PATH   = Path(__file__).parent / "assets" / "logo.png"
+
+def _asset_path(name: str) -> Path:
+    """Resolve asset path for both normal and PyInstaller-frozen execution."""
+    base = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).parent
+    return base / "assets" / name
+
+LOGO_ICO  = _asset_path("logo.ico")
+LOGO_PNG  = _asset_path("logo.png")
 ACCENT      = "#7B68EE"
 ACCENT_HOVER = "#6A5ACD"
 
@@ -658,12 +666,10 @@ class PersonaPackagerStudio(ctk.CTk):
         self.geometry("1000x720")
         self.minsize(800, 600)
 
-        # Window icon
-        if LOGO_PATH.exists():
+        # Window / taskbar icon (ICO required on Windows)
+        if LOGO_ICO.exists():
             try:
-                _ico = ImageTk.PhotoImage(Image.open(LOGO_PATH).resize((32, 32), Image.LANCZOS))
-                self.iconphoto(True, _ico)
-                self._logo_icon = _ico  # prevent GC
+                self.iconbitmap(str(LOGO_ICO))
             except Exception:
                 pass
 
@@ -737,17 +743,9 @@ class PersonaPackagerStudio(ctk.CTk):
         tb = ctk.CTkFrame(main, height=40, fg_color="#1a1a2e", corner_radius=0)
         tb.grid(row=0, column=0, sticky="ew")
         tb.grid_propagate(False)
-        if LOGO_PATH.exists():
-            try:
-                _logo_img = Image.open(LOGO_PATH).convert("RGBA")
-                _logo_ctk = ctk.CTkImage(light_image=_logo_img, dark_image=_logo_img, size=(26, 26))
-                ctk.CTkLabel(tb, image=_logo_ctk, text="").pack(side="left", padx=(12, 2), pady=7)
-                self._titlebar_logo = _logo_ctk  # prevent GC
-            except Exception:
-                pass
         ctk.CTkLabel(tb, text=APP_TITLE,
                      font=ctk.CTkFont(size=14, weight="bold"),
-                     text_color=ACCENT).pack(side="left", padx=(4, 16), pady=8)
+                     text_color=ACCENT).pack(side="left", padx=16, pady=8)
         self._theme_btn = ctk.CTkButton(
             tb, text="◐ Light", width=80, height=26,
             fg_color="#2a2a40", hover_color="#3a3a58", command=self._toggle_theme)
