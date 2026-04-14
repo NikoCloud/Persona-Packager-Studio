@@ -21,6 +21,28 @@
 
 ---
 
+## Screenshots
+
+<p align="center">
+  <img src="assets/banner.png" alt="Persona Packager Studio banner" width="800"/>
+</p>
+
+<p align="center">
+  <img src="assets/basic_tab.png" alt="Basic Info tab" width="380"/>
+  &nbsp;&nbsp;
+  <img src="assets/advanced_tab.png" alt="Advanced tab" width="380"/>
+</p>
+<p align="center"><em>Basic Info tab (left) · Advanced tab (right)</em></p>
+
+<p align="center">
+  <img src="assets/expressions_tab.png" alt="Expressions tab — 28-slot grid" width="380"/>
+  &nbsp;&nbsp;
+  <img src="assets/cropper_tool.png" alt="Interactive cropper" width="380"/>
+</p>
+<p align="center"><em>Expressions tab — 28-slot grid (left) · Interactive cropper (right)</em></p>
+
+---
+
 ## Features
 
 - **Full V2 card editor** — all metadata fields: Name, Description, Personality, Scenario, First Message, Example Messages, System Prompt, Post-History Instructions, Alternate Greetings, Tags, Creator, Character Version, Creator Notes
