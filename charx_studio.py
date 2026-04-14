@@ -1199,6 +1199,7 @@ class PersonaPackagerStudio(ctk.CTk):
             self._expr_warn[expr]   = False
             self._expr_slots[expr].set_image(None)
 
+        self._update_avatar_preview()
         self._refresh_sidebar()
 
     def _collect_card(self) -> dict:

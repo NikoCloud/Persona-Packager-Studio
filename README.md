@@ -1,18 +1,23 @@
-# Persona Packager Studio
+<p align="center">
+  <img src="assets/logo.png" width="120" alt="Persona Packager Studio logo"/>
+</p>
 
-**A standalone desktop app for creating, editing, and packaging SillyTavern character cards.**
+<h1 align="center">Persona Packager Studio</h1>
 
-Persona Packager Studio replaces manual tools like desune.moe with a dedicated editor that handles everything in one place — fill in your card metadata, assign expression sprites to named slots, and export a SillyTavern-ready `.charx` file in one click.
+<p align="center">
+  A standalone desktop app for creating, editing, and packaging SillyTavern character cards.<br/>
+  Part of the <strong>Persona Workflow</strong> — see the <a href="#persona-workflow--sister-apps">sister app</a> below.
+</p>
 
-Part of the **Persona Workflow** — see the [sister app](#persona-workflow--sister-apps) below.
-
----
-
-## Download
-
-**[Download Persona Packager Studio v1.0.1 (.exe)](https://github.com/NikoCloud/Persona-Packager-Studio/releases/latest)**
-
-No Python, no install — just download and run.
+<p align="center">
+  <a href="https://github.com/NikoCloud/Persona-Packager-Studio/releases/latest">
+    <img src="https://img.shields.io/github/v/release/NikoCloud/Persona-Packager-Studio?label=Download&style=for-the-badge&color=7B68EE" alt="Download latest release"/>
+  </a>
+  &nbsp;
+  <img src="https://img.shields.io/badge/Platform-Windows-blue?style=for-the-badge" alt="Windows"/>
+  &nbsp;
+  <img src="https://img.shields.io/badge/Python-3.10+-yellow?style=for-the-badge" alt="Python 3.10+"/>
+</p>
 
 ---
 
