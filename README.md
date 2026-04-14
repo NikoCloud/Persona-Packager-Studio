@@ -10,7 +10,7 @@ Part of the **Persona Workflow** — see the [sister app](#persona-workflow--sis
 
 ## Download
 
-**[Download Persona Packager Studio v1.0.0 (.exe)](https://github.com/NikoCloud/CharX-Studio/releases/latest)**
+**[Download Persona Packager Studio v1.0.1 (.exe)](https://github.com/NikoCloud/Persona-Packager-Studio/releases/latest)**
 
 No Python, no install — just download and run.
 
