@@ -9,8 +9,12 @@ import base64
 import difflib
 import io
 import json
+import os
 import struct
 import sys
+import threading
+import urllib.request
+import webbrowser
 import zipfile
 import zlib
 from pathlib import Path
@@ -22,7 +26,37 @@ from PIL import Image, ImageTk
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-APP_TITLE   = "Persona Packager Studio"
+APP_TITLE     = "Persona Packager Studio"
+APP_VERSION   = "1.0.4"
+RELEASES_URL  = "https://github.com/NikoCloud/Persona-Packager-Studio/releases/latest"
+RELEASES_API  = "https://api.github.com/repos/NikoCloud/Persona-Packager-Studio/releases/latest"
+SETTINGS_FILE = os.path.join(os.path.expandvars('%APPDATA%'),
+                             'PersonaPackagerStudio', 'settings.json')
+
+
+def _load_settings() -> dict:
+    try:
+        with open(SETTINGS_FILE, 'r') as f:
+            return json.load(f)
+    except Exception:
+        return {'check_updates': True}
+
+
+def _save_settings(data: dict):
+    try:
+        os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
+        with open(SETTINGS_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        pass
+
+
+def _version_tuple(v: str) -> tuple:
+    try:
+        return tuple(int(x) for x in v.strip().lstrip('v').split('.'))
+    except Exception:
+        return (0,)
+
 
 def _asset_path(name: str) -> Path:
     """Resolve asset path for both normal and PyInstaller-frozen execution."""
@@ -687,10 +721,19 @@ class PersonaPackagerStudio(ctk.CTk):
         self._SIDEBAR_MIN:  int = 150
         self._SIDEBAR_MAX:  int = 520
 
+        # Update-check state
+        self._settings = _load_settings()
+        self._check_updates_var = tk.BooleanVar(
+            value=self._settings.get('check_updates', True))
+
         self._build_ui()
         self._refresh_sidebar()
         self.bind("<Configure>", self._on_window_resize)
         self._last_win_h = 0
+
+        # Kick off update check after window is shown
+        if self._check_updates_var.get():
+            self.after(800, self._start_update_check)
 
     # ── UI ────────────────────────────────────────────────────────────────────
 
@@ -823,6 +866,8 @@ class PersonaPackagerStudio(ctk.CTk):
         bar = ctk.CTkFrame(self, height=48, corner_radius=0, fg_color="#16162a")
         bar.grid(row=1, column=0, columnspan=3, sticky="ew")
         bar.grid_propagate(False)
+
+        # RIGHT side: export buttons
         ctk.CTkButton(bar, text="Export .charx", width=130, height=32,
                       fg_color=ACCENT, hover_color=ACCENT_HOVER,
                       font=ctk.CTkFont(weight="bold"),
@@ -830,9 +875,97 @@ class PersonaPackagerStudio(ctk.CTk):
         ctk.CTkButton(bar, text="Export PNG", width=110, height=32,
                       fg_color="#2a2a40", hover_color="#3a3a58",
                       command=self._export_png).pack(side="right", padx=4, pady=8)
+
+        # LEFT side: version + update check
+        ctk.CTkLabel(bar, text=f"v{APP_VERSION}",
+                     font=ctk.CTkFont(size=11),
+                     text_color="#666677").pack(side="left", padx=(10, 4), pady=8)
+
+        ctk.CTkLabel(bar, text="│",
+                     font=ctk.CTkFont(size=11),
+                     text_color="#333344").pack(side="left", padx=2, pady=8)
+
+        ctk.CTkCheckBox(bar, text="Check for updates",
+                        variable=self._check_updates_var,
+                        font=ctk.CTkFont(size=11),
+                        width=145, height=20,
+                        command=self._on_update_check_toggled
+                        ).pack(side="left", padx=(4, 4), pady=8)
+
+        ctk.CTkLabel(bar, text="│",
+                     font=ctk.CTkFont(size=11),
+                     text_color="#333344").pack(side="left", padx=2, pady=8)
+
+        self._update_status_lbl = ctk.CTkLabel(
+            bar, text="", font=ctk.CTkFont(size=11),
+            text_color="#666677")
+        self._update_status_lbl.pack(side="left", padx=(4, 4), pady=8)
+
+        self._update_dl_btn = ctk.CTkButton(
+            bar, text="↓ Download Update", width=150, height=24,
+            font=ctk.CTkFont(size=11),
+            fg_color="#1a6fb5", hover_color="#155a94",
+            command=lambda: webbrowser.open(RELEASES_URL))
+        # packed only when an update is available
+
+        # App status label (existing "Ready" / export feedback)
         self._status_var = tk.StringVar(value="Ready")
         ctk.CTkLabel(bar, textvariable=self._status_var,
-                     font=ctk.CTkFont(size=11), text_color="#888899").pack(side="left", padx=16)
+                     font=ctk.CTkFont(size=11),
+                     text_color="#888899").pack(side="left", padx=16, pady=8)
+
+        # Set initial update status text
+        if self._check_updates_var.get():
+            self._set_update_status("checking")
+        else:
+            self._set_update_status("disabled")
+
+    # ── Update check ─────────────────────────────────────────────────────────
+
+    def _on_update_check_toggled(self):
+        enabled = self._check_updates_var.get()
+        self._settings['check_updates'] = enabled
+        _save_settings(self._settings)
+        if enabled:
+            self._set_update_status("checking")
+            self._start_update_check()
+        else:
+            self._set_update_status("disabled")
+
+    def _start_update_check(self):
+        threading.Thread(target=self._fetch_latest_version, daemon=True).start()
+
+    def _fetch_latest_version(self):
+        try:
+            req = urllib.request.Request(
+                RELEASES_API,
+                headers={"User-Agent": f"PersonaPackagerStudio/{APP_VERSION}"})
+            with urllib.request.urlopen(req, timeout=6) as resp:
+                data = json.loads(resp.read())
+            latest = data["tag_name"].lstrip("v")
+            if _version_tuple(latest) > _version_tuple(APP_VERSION):
+                self.after(0, lambda: self._set_update_status("available", latest))
+            else:
+                self.after(0, lambda: self._set_update_status("uptodate"))
+        except Exception:
+            self.after(0, lambda: self._set_update_status("offline"))
+
+    def _set_update_status(self, state: str, version: str = ""):
+        cfg = {
+            "checking":  ("Checking for updates…",            "#666677"),
+            "uptodate":  ("✓  Up to date",                    "#4CAF50"),
+            "available": (f"⚠  Update available: v{version}", "#FF9800"),
+            "offline":   ("●  No connection",                 "#888888"),
+            "disabled":  ("○  Updates disabled",              "#555566"),
+        }
+        text, color = cfg.get(state, ("", "#666677"))
+        self._update_status_lbl.configure(text=text, text_color=color)
+        if state == "available":
+            self._update_dl_btn.pack(side="left", padx=(4, 8), pady=8)
+        else:
+            self._update_dl_btn.pack_forget()
+
+    # ── Tabs ──────────────────────────────────────────────────────────────────
 
     def _build_basic_tab(self, tab):
         tab.grid_columnconfigure(1, weight=1)
