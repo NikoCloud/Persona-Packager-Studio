@@ -128,7 +128,7 @@ Persona Packager Studio is the final step in a two-app workflow designed for cha
 
 | App | Purpose |
 |-----|---------|
-| **[Persona Asset Forge](https://github.com/NikoCloud/PNG-Background-Remover)** | Prepare your assets — remove backgrounds from character art and expression sprites, producing clean PNGs ready for packaging |
+| **[Persona Asset Forge](https://github.com/NikoCloud/Persona-Asset-Forge)** | Prepare your assets — remove backgrounds from character art and expression sprites, producing clean PNGs ready for packaging |
 | **Persona Packager Studio** *(this app)* | Package your clean assets — fill in card metadata, assign expressions to named slots, export a SillyTavern-ready `.charx` file |
 
 **Typical workflow:**
