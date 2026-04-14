@@ -683,26 +683,35 @@ class PersonaPackagerStudio(ctk.CTk):
         self._expr_warn:    dict[str, bool]                   = {e: False for e in EXPRESSIONS}
         self._expr_slots:   dict[str, ExpressionSlot]         = {}
 
+        self._sidebar_w:    int = 170
+        self._SIDEBAR_MIN:  int = 150
+        self._SIDEBAR_MAX:  int = 520
+
         self._build_ui()
         self._refresh_sidebar()
 
     # ── UI ────────────────────────────────────────────────────────────────────
 
     def _build_ui(self):
-        self.grid_columnconfigure(1, weight=1)
+        # col 0 = sidebar, col 1 = sash, col 2 = main
+        self.grid_columnconfigure(2, weight=1)
         self.grid_rowconfigure(0, weight=1)
         self._build_sidebar()
+        self._build_sash()
         self._build_main()
         self._build_bottom_bar()
 
     def _build_sidebar(self):
-        sb = ctk.CTkFrame(self, width=170, corner_radius=0, fg_color="#16162a")
+        sb = ctk.CTkFrame(self, width=self._sidebar_w, corner_radius=0, fg_color="#16162a")
         sb.grid(row=0, column=0, sticky="nsew")
         sb.grid_propagate(False)
         sb.grid_rowconfigure(6, weight=1)
+        self._sidebar = sb
 
+        aw = self._avatar_preview_w()
+        ah = int(aw * 3 / 2)
         self._avatar_label = ctk.CTkLabel(
-            sb, text="", width=128, height=128,
+            sb, text="", width=aw, height=ah,
             corner_radius=10, fg_color=PLACEHOLDER_COLOR)
         self._avatar_label.grid(row=0, column=0, padx=20, pady=(20, 2))
         self._avatar_label.bind("<Button-1>", lambda _: self._browse_avatar())
@@ -719,7 +728,7 @@ class PersonaPackagerStudio(ctk.CTk):
                      text_color="#888899").grid(row=3, column=0, padx=20, sticky="w")
         self._sidebar_name = ctk.CTkLabel(sb, text="—",
                                           font=ctk.CTkFont(size=13, weight="bold"),
-                                          wraplength=140, justify="left")
+                                          wraplength=self._sidebar_w - 40, justify="left")
         self._sidebar_name.grid(row=4, column=0, padx=20, sticky="w")
 
         ctk.CTkLabel(sb, text="Est. tokens", font=ctk.CTkFont(size=11),
@@ -734,9 +743,42 @@ class PersonaPackagerStudio(ctk.CTk):
         ctk.CTkButton(bf, text="Import ▾", width=130, fg_color=ACCENT,
                       hover_color=ACCENT_HOVER, command=self._import_menu).pack(pady=4)
 
+    def _build_sash(self):
+        sash = tk.Frame(self, width=5, bg="#0f0f1e", cursor="size_we")
+        sash.grid(row=0, column=1, sticky="nsew", rowspan=2)
+        sash.bind("<ButtonPress-1>",  self._sash_press)
+        sash.bind("<B1-Motion>",      self._sash_drag)
+        # Highlight on hover so it's discoverable
+        sash.bind("<Enter>", lambda _: sash.configure(bg="#3a3a5e"))
+        sash.bind("<Leave>", lambda _: sash.configure(bg="#0f0f1e"))
+        self._sash = sash
+        self._sash_start_x = 0
+
+    def _sash_press(self, event):
+        self._sash_start_x = event.x_root - self._sidebar_w
+
+    def _sash_drag(self, event):
+        new_w = event.x_root - self._sash_start_x
+        new_w = max(self._SIDEBAR_MIN, min(self._SIDEBAR_MAX, new_w))
+        if new_w != self._sidebar_w:
+            self._sidebar_w = new_w
+            self._resize_sidebar()
+
+    def _avatar_preview_w(self) -> int:
+        """Avatar preview pixel width derived from current sidebar width."""
+        return max(80, self._sidebar_w - 40)
+
+    def _resize_sidebar(self):
+        self._sidebar.configure(width=self._sidebar_w)
+        self._sidebar_name.configure(wraplength=self._sidebar_w - 40)
+        aw = self._avatar_preview_w()
+        ah = int(aw * 3 / 2)
+        self._avatar_label.configure(width=aw, height=ah)
+        self._update_avatar_preview()
+
     def _build_main(self):
         main = ctk.CTkFrame(self, fg_color="transparent")
-        main.grid(row=0, column=1, sticky="nsew")
+        main.grid(row=0, column=2, sticky="nsew")
         main.grid_columnconfigure(0, weight=1)
         main.grid_rowconfigure(1, weight=1)
 
@@ -763,7 +805,7 @@ class PersonaPackagerStudio(ctk.CTk):
 
     def _build_bottom_bar(self):
         bar = ctk.CTkFrame(self, height=48, corner_radius=0, fg_color="#16162a")
-        bar.grid(row=1, column=0, columnspan=2, sticky="ew")
+        bar.grid(row=1, column=0, columnspan=3, sticky="ew")
         bar.grid_propagate(False)
         ctk.CTkButton(bar, text="Export .charx", width=130, height=32,
                       fg_color=ACCENT, hover_color=ACCENT_HOVER,
@@ -1042,14 +1084,16 @@ class PersonaPackagerStudio(ctk.CTk):
 
     def _update_avatar_preview(self):
         if not self._avatar_path or not self._avatar_path.exists():
+            aw = self._avatar_preview_w()
             self._avatar_label.configure(image="", text="", fg_color=PLACEHOLDER_COLOR,
-                                          width=128, height=128)
+                                          width=aw, height=int(aw * 3 / 2))
             self._avatar_warn_label.configure(text="")
             return
         try:
+            aw = self._avatar_preview_w()
             img = Image.open(self._avatar_path).convert("RGBA")
             img = _pil_crop_resize(img, self._avatar_crop, None)
-            img.thumbnail((128, 192), Image.LANCZOS)
+            img.thumbnail((aw, int(aw * 3 / 2)), Image.LANCZOS)
             w, h = img.size
             self._avatar_photo = ctk.CTkImage(light_image=img, dark_image=img, size=(w, h))
             self._avatar_label.configure(image=self._avatar_photo, text="",
