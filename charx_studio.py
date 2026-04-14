@@ -1,5 +1,5 @@
 """
-CharX Studio — SillyTavern Character Card Editor & Packager
+Persona Packager Studio — SillyTavern Character Card Editor & Packager
 Builds .charx archives (V2 spec) from existing assets.
 """
 
@@ -21,7 +21,8 @@ from PIL import Image, ImageTk
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-APP_TITLE   = "CharX Studio"
+APP_TITLE   = "Persona Packager Studio"
+LOGO_PATH   = Path(__file__).parent / "assets" / "logo.png"
 ACCENT      = "#7B68EE"
 ACCENT_HOVER = "#6A5ACD"
 
@@ -649,13 +650,22 @@ ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
 
-class CharXStudio(ctk.CTk):
+class PersonaPackagerStudio(ctk.CTk):
 
     def __init__(self):
         super().__init__()
         self.title(APP_TITLE)
         self.geometry("1000x720")
         self.minsize(800, 600)
+
+        # Window icon
+        if LOGO_PATH.exists():
+            try:
+                _ico = ImageTk.PhotoImage(Image.open(LOGO_PATH).resize((32, 32), Image.LANCZOS))
+                self.iconphoto(True, _ico)
+                self._logo_icon = _ico  # prevent GC
+            except Exception:
+                pass
 
         self._card         = empty_card()
         self._avatar_path:  Path | None = None
@@ -727,9 +737,17 @@ class CharXStudio(ctk.CTk):
         tb = ctk.CTkFrame(main, height=40, fg_color="#1a1a2e", corner_radius=0)
         tb.grid(row=0, column=0, sticky="ew")
         tb.grid_propagate(False)
+        if LOGO_PATH.exists():
+            try:
+                _logo_img = Image.open(LOGO_PATH).convert("RGBA")
+                _logo_ctk = ctk.CTkImage(light_image=_logo_img, dark_image=_logo_img, size=(26, 26))
+                ctk.CTkLabel(tb, image=_logo_ctk, text="").pack(side="left", padx=(12, 2), pady=7)
+                self._titlebar_logo = _logo_ctk  # prevent GC
+            except Exception:
+                pass
         ctk.CTkLabel(tb, text=APP_TITLE,
                      font=ctk.CTkFont(size=14, weight="bold"),
-                     text_color=ACCENT).pack(side="left", padx=16, pady=8)
+                     text_color=ACCENT).pack(side="left", padx=(4, 16), pady=8)
         self._theme_btn = ctk.CTkButton(
             tb, text="◐ Light", width=80, height=26,
             fg_color="#2a2a40", hover_color="#3a3a58", command=self._toggle_theme)
@@ -1198,9 +1216,9 @@ class CharXStudio(ctk.CTk):
 if __name__ == "__main__":
     try:
         from tkinterdnd2 import TkinterDnD
-        class DnDApp(CharXStudio, TkinterDnD.Tk):  # type: ignore
+        class DnDApp(PersonaPackagerStudio, TkinterDnD.Tk):  # type: ignore
             pass
         app = DnDApp()
     except ImportError:
-        app = CharXStudio()
+        app = PersonaPackagerStudio()
     app.mainloop()

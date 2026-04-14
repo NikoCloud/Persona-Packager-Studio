@@ -1,14 +1,16 @@
-# CharX Studio
+# Persona Packager Studio
 
 **A standalone desktop app for creating, editing, and packaging SillyTavern character cards.**
 
-CharX Studio replaces manual tools like desune.moe with a dedicated editor that handles everything in one place — fill in your card metadata, assign expression sprites to named slots, and export a SillyTavern-ready `.charx` file in one click.
+Persona Packager Studio replaces manual tools like desune.moe with a dedicated editor that handles everything in one place — fill in your card metadata, assign expression sprites to named slots, and export a SillyTavern-ready `.charx` file in one click.
+
+Part of the **Persona Workflow** — see the [sister app](#persona-workflow--sister-apps) below.
 
 ---
 
 ## Download
 
-**[Download CharX Studio v1.0.0 (.exe)](https://github.com/NikoCloud/CharX-Studio/releases/latest)**
+**[Download Persona Packager Studio v1.0.0 (.exe)](https://github.com/NikoCloud/CharX-Studio/releases/latest)**
 
 No Python, no install — just download and run.
 
@@ -120,6 +122,23 @@ The card data and all expressions are automatically extracted and registered.
 
 ---
 
+## Persona Workflow — Sister Apps
+
+Persona Packager Studio is the final step in a two-app workflow designed for character creators:
+
+| App | Purpose |
+|-----|---------|
+| **[Persona Asset Forge](https://github.com/NikoCloud/PNG-Background-Remover)** | Prepare your assets — remove backgrounds from character art and expression sprites, producing clean PNGs ready for packaging |
+| **Persona Packager Studio** *(this app)* | Package your clean assets — fill in card metadata, assign expressions to named slots, export a SillyTavern-ready `.charx` file |
+
+**Typical workflow:**
+1. Generate or source character art and expression sprites
+2. Open **Persona Asset Forge** → remove backgrounds → export clean PNGs
+3. Open **Persona Packager Studio** → fill metadata → assign expressions → export `.charx`
+4. Import into SillyTavern
+
+---
+
 ## Build from Source
 
 ```bash
@@ -131,10 +150,10 @@ python charx_studio.py
 
 # Build .exe (optional)
 pip install pyinstaller
-pyinstaller --onefile --windowed --name "CharX Studio" charx_studio.py
+pyinstaller --onefile --windowed --name "Persona Packager Studio" charx_studio.py
 ```
 
-Output: `dist/CharX Studio.exe`
+Output: `dist/Persona Packager Studio.exe`
 
 ### Requirements
 
